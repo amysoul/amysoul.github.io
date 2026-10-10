@@ -1,0 +1,312 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>집중 타이머</title>
+<style>
+  :root {
+    --bg: #f6f4ef;
+    --card: #ffffff;
+    --text: #1f1d1a;
+    --muted: #77716a;
+    --line: #e4dfd6;
+    --accent: #d9553b;
+    --accent-soft: #f7ddd6;
+    --track: #ece7de;
+  }
+  :root[data-mode="short"], :root[data-mode="long"] {
+    --accent: #2f8f6b;
+    --accent-soft: #d5ede3;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #161513;
+      --card: #201f1c;
+      --text: #f1ede6;
+      --muted: #9a938a;
+      --line: #34312c;
+      --accent: #ef7a5f;
+      --accent-soft: #3a2621;
+      --track: #2c2a26;
+    }
+    :root[data-mode="short"], :root[data-mode="long"] {
+      --accent: #58c39b;
+      --accent-soft: #1d3329;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Pretendard", "Noto Sans KR", sans-serif;
+    transition: background .4s;
+  }
+  main { max-width: 440px; margin: 0 auto; padding: 32px 16px 64px; }
+  h1 { font-size: 15px; font-weight: 600; color: var(--muted); margin: 0 0 20px; letter-spacing: .02em; }
+
+  .modes { display: flex; gap: 6px; background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 4px; }
+  .modes button {
+    flex: 1; border: 0; background: transparent; color: var(--muted);
+    padding: 8px 0; border-radius: 8px; font: inherit; font-size: 14px; cursor: pointer;
+  }
+  .modes button[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+
+  .dial { position: relative; width: min(280px, 80vw); aspect-ratio: 1; margin: 28px auto 20px; }
+  .dial svg { width: 100%; height: 100%; transform: rotate(-90deg); }
+  .dial circle { fill: none; stroke-width: 10; }
+  .dial .track { stroke: var(--track); }
+  .dial .bar { stroke: var(--accent); stroke-linecap: round; transition: stroke-dashoffset .25s linear, stroke .4s; }
+  .readout { position: absolute; inset: 0; display: grid; place-content: center; text-align: center; }
+  .time { font-size: clamp(48px, 16vw, 64px); font-weight: 600; font-variant-numeric: tabular-nums; letter-spacing: -.02em; }
+  .label { color: var(--muted); font-size: 14px; margin-top: 4px; max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  .controls { display: flex; justify-content: center; gap: 10px; }
+  .controls button {
+    font: inherit; font-size: 15px; border-radius: 999px; cursor: pointer;
+    border: 1px solid var(--line); background: var(--card); color: var(--text); padding: 10px 18px;
+  }
+  .controls .primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; min-width: 110px; }
+  .dots { text-align: center; margin: 16px 0 0; color: var(--muted); font-size: 13px; }
+  .dots span { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--track); margin: 0 3px; vertical-align: middle; }
+  .dots span.on { background: var(--accent); }
+
+  section.tasks { margin-top: 36px; background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 16px; }
+  .tasks h2 { font-size: 15px; margin: 0 0 12px; display: flex; justify-content: space-between; }
+  .tasks h2 small { color: var(--muted); font-weight: 400; }
+  form { display: flex; gap: 8px; }
+  form input {
+    flex: 1; min-width: 0; font: inherit; font-size: 15px; padding: 9px 12px;
+    border: 1px solid var(--line); border-radius: 10px; background: var(--bg); color: var(--text);
+  }
+  form button { font: inherit; border: 0; border-radius: 10px; padding: 0 14px; background: var(--accent); color: #fff; cursor: pointer; }
+  ul { list-style: none; padding: 0; margin: 12px 0 0; }
+  li { display: flex; align-items: center; gap: 10px; padding: 9px 8px; border-radius: 10px; cursor: pointer; }
+  li:hover { background: var(--bg); }
+  li.active { background: var(--accent-soft); }
+  li input { width: 18px; height: 18px; accent-color: var(--accent); cursor: pointer; flex: none; }
+  li .name { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+  li.done .name { text-decoration: line-through; color: var(--muted); }
+  li .count { color: var(--accent); font-size: 13px; font-variant-numeric: tabular-nums; }
+  li .del { border: 0; background: none; color: var(--muted); font-size: 18px; cursor: pointer; padding: 0 4px; opacity: .5; }
+  li .del:hover { opacity: 1; }
+  .empty { color: var(--muted); font-size: 14px; text-align: center; padding: 14px 0 4px; }
+  .hint { color: var(--muted); font-size: 12px; text-align: center; margin-top: 20px; }
+  kbd { border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; font-family: inherit; }
+</style>
+</head>
+<body>
+<main>
+  <h1>🍅 집중 타이머</h1>
+
+  <div class="modes" role="group" aria-label="모드">
+    <button data-mode="focus">집중</button>
+    <button data-mode="short">짧은 휴식</button>
+    <button data-mode="long">긴 휴식</button>
+  </div>
+
+  <div class="dial">
+    <svg viewBox="0 0 120 120" aria-hidden="true">
+      <circle class="track" cx="60" cy="60" r="52"/>
+      <circle class="bar" cx="60" cy="60" r="52"/>
+    </svg>
+    <div class="readout">
+      <div class="time" id="time">25:00</div>
+      <div class="label" id="label">집중할 시간</div>
+    </div>
+  </div>
+
+  <div class="controls">
+    <button id="reset" title="처음으로">↺</button>
+    <button id="toggle" class="primary">시작</button>
+    <button id="skip" title="다음으로 넘기기">⏭</button>
+  </div>
+  <p class="dots" id="dots"></p>
+
+  <section class="tasks">
+    <h2>오늘 할 일 <small id="today"></small></h2>
+    <form id="add">
+      <input id="newTask" placeholder="무엇에 집중할까요?" autocomplete="off" maxlength="80">
+      <button>추가</button>
+    </form>
+    <ul id="list"></ul>
+  </section>
+
+  <p class="hint"><kbd>Space</kbd> 시작/일시정지 · 할 일을 누르면 그 일에 뽀모도로가 기록돼요</p>
+</main>
+
+<script>
+const MINUTES = { focus: 25, short: 5, long: 15 };
+const LABELS = { focus: '집중할 시간', short: '잠깐 쉬어요', long: '푹 쉬어요' };
+const KEY = 'focus-v1';
+const today = new Date().toLocaleDateString('sv'); // YYYY-MM-DD
+
+// ---- storage ----
+function load() {
+  try {
+    const s = JSON.parse(localStorage.getItem(KEY)) || {};
+    if (s.date !== today) s.done = 0; // 날짜가 바뀌면 오늘 카운트 초기화
+    return { tasks: s.tasks || [], active: s.active ?? null, done: s.done || 0, date: today };
+  } catch { return { tasks: [], active: null, done: 0, date: today }; }
+}
+function save() {
+  try { localStorage.setItem(KEY, JSON.stringify(state)); } catch {}
+}
+const state = load();
+
+// ---- timer ----
+let mode = 'focus';
+let remaining = MINUTES.focus * 60 * 1000;
+let endAt = null;      // 실행 중이면 종료 시각(ms)
+let tick = null;
+
+const $ = id => document.getElementById(id);
+const bar = document.querySelector('.bar');
+const C = 2 * Math.PI * 52;
+bar.style.strokeDasharray = C;
+
+function fmt(ms) {
+  const s = Math.ceil(ms / 1000);
+  return String(Math.floor(s / 60)).padStart(2, '0') + ':' + String(s % 60).padStart(2, '0');
+}
+
+function render() {
+  const left = endAt ? Math.max(0, endAt - Date.now()) : remaining;
+  const total = MINUTES[mode] * 60 * 1000;
+  $('time').textContent = fmt(left);
+  bar.style.strokeDashoffset = C * (1 - left / total);
+  $('toggle').textContent = endAt ? '일시정지' : (left < total ? '계속' : '시작');
+  const task = state.tasks.find(t => t.id === state.active);
+  $('label').textContent = mode === 'focus' && task ? task.text : LABELS[mode];
+  document.title = endAt ? `${fmt(left)} · ${mode === 'focus' ? '집중' : '휴식'}` : '집중 타이머';
+  document.querySelectorAll('.modes button').forEach(b => b.setAttribute('aria-pressed', b.dataset.mode === mode));
+  document.documentElement.dataset.mode = mode;
+  const n = state.done % 4;
+  $('dots').innerHTML = [0,1,2,3].map(i => `<span class="${i < n ? 'on' : ''}"></span>`).join('') + ` &nbsp;오늘 ${state.done}개 완료`;
+  $('today').textContent = state.done ? `🍅 × ${state.done}` : '';
+}
+
+function setMode(m) {
+  stop();
+  mode = m;
+  remaining = MINUTES[m] * 60 * 1000;
+  render();
+}
+
+function start() {
+  if (endAt) return;
+  unlockAudio();
+  endAt = Date.now() + remaining;
+  tick = setInterval(() => {
+    if (Date.now() >= endAt) finish(); else render();
+  }, 250);
+  render();
+}
+
+function stop() {
+  if (endAt) remaining = Math.max(0, endAt - Date.now());
+  endAt = null;
+  clearInterval(tick);
+}
+
+function finish() {
+  stop();
+  chime();
+  if (mode === 'focus') {
+    state.done++;
+    const task = state.tasks.find(t => t.id === state.active);
+    if (task) task.pomos = (task.pomos || 0) + 1;
+    save();
+    renderList();
+    setMode(state.done % 4 === 0 ? 'long' : 'short');
+  } else {
+    setMode('focus');
+  }
+}
+
+// ---- sound ----
+let ctx;
+function unlockAudio() {
+  try { ctx ||= new (window.AudioContext || window.webkitAudioContext)(); ctx.resume(); } catch {}
+}
+function chime() {
+  if (!ctx) return;
+  [660, 880, 990].forEach((f, i) => {
+    const o = ctx.createOscillator(), g = ctx.createGain(), t = ctx.currentTime + i * 0.22;
+    o.frequency.value = f;
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.25, t + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.6);
+    o.connect(g).connect(ctx.destination);
+    o.start(t); o.stop(t + 0.65);
+  });
+}
+
+// ---- tasks ----
+function renderList() {
+  const ul = $('list');
+  ul.innerHTML = '';
+  if (!state.tasks.length) {
+    ul.innerHTML = '<li class="empty" style="cursor:default">할 일을 추가하고 하나를 골라 집중해 보세요</li>';
+    return;
+  }
+  for (const t of state.tasks) {
+    const li = document.createElement('li');
+    li.className = (t.id === state.active ? 'active ' : '') + (t.done ? 'done' : '');
+    li.innerHTML = `<input type="checkbox" ${t.done ? 'checked' : ''} aria-label="완료">
+      <span class="name"></span><span class="count">${t.pomos ? '🍅' + t.pomos : ''}</span>
+      <button class="del" aria-label="삭제">×</button>`;
+    li.querySelector('.name').textContent = t.text;
+    li.querySelector('input').onclick = e => {
+      e.stopPropagation();
+      t.done = e.target.checked;
+      if (t.done && state.active === t.id) state.active = null;
+      commit();
+    };
+    li.querySelector('.del').onclick = e => {
+      e.stopPropagation();
+      state.tasks = state.tasks.filter(x => x !== t);
+      if (state.active === t.id) state.active = null;
+      commit();
+    };
+    li.onclick = () => {
+      if (t.done) return;
+      state.active = state.active === t.id ? null : t.id;
+      commit();
+    };
+    ul.append(li);
+  }
+}
+function commit() { save(); renderList(); render(); }
+
+$('add').onsubmit = e => {
+  e.preventDefault();
+  const text = $('newTask').value.trim();
+  if (!text) return;
+  const t = { id: Date.now(), text, done: false, pomos: 0 };
+  state.tasks.push(t);
+  if (state.active == null) state.active = t.id;
+  $('newTask').value = '';
+  commit();
+};
+
+// ---- wiring ----
+$('toggle').onclick = () => endAt ? (stop(), render()) : start();
+$('reset').onclick = () => setMode(mode);
+$('skip').onclick = () => { stop(); mode === 'focus' ? setMode('short') : setMode('focus'); };
+document.querySelectorAll('.modes button').forEach(b => b.onclick = () => setMode(b.dataset.mode));
+document.addEventListener('keydown', e => {
+  if (e.code === 'Space' && e.target.tagName !== 'INPUT') {
+    e.preventDefault();
+    $('toggle').click();
+  }
+});
+// 백그라운드 탭에서 interval이 늦어져도 돌아오면 바로 반영
+document.addEventListener('visibilitychange', () => { if (endAt && Date.now() >= endAt) finish(); else render(); });
+
+renderList();
+render();
+</script>
+</body>
+</html>
